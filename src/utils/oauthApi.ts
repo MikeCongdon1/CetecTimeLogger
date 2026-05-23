@@ -25,14 +25,18 @@ interface OAuthRefreshResponse {
   tokenType: string;
 }
 
-// Get the API base URL from user configuration
 async function getApiBaseUrl(): Promise<string> {
   const configuredUrl = await cetecConfig.getCetecUrl();
   if (!configuredUrl) {
     throw new Error('CetecERP URL not configured. Please set it in Settings.');
   }
-  // Ensure no trailing slash
   return configuredUrl.replace(/\/$/, '');
+}
+
+async function getClientCredentials(): Promise<{ clientId: string; clientSecret: string | null }> {
+  const clientId = (await cetecConfig.getClientId()) ?? 'cetec-time-logger';
+  const clientSecret = await cetecConfig.getClientSecret();
+  return { clientId, clientSecret };
 }
 
 /**
@@ -42,12 +46,14 @@ async function getApiBaseUrl(): Promise<string> {
  */
 export async function initiateServerGeneratedCode(): Promise<OAuthInitiateResponse> {
   const baseUrl = await getApiBaseUrl();
+  const { clientId, clientSecret } = await getClientCredentials();
   const response = await fetch(`${baseUrl}/oauth/initiate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      clientId: 'cetec-time-logger', // Your app's registered client ID
-      platform: 'mobile', // or 'web' depending on platform
+      clientId,
+      ...(clientSecret && { clientSecret }),
+      platform: 'mobile',
     }),
   });
 
@@ -66,13 +72,13 @@ export async function initiateServerGeneratedCode(): Promise<OAuthInitiateRespon
  */
 export async function initiateBrowserOAuth(redirectUri: string): Promise<string> {
   const baseUrl = await getApiBaseUrl();
-  // Construct OAuth authorization URL
+  const { clientId } = await getClientCredentials();
   const params = new URLSearchParams({
-    client_id: 'cetec-time-logger',
+    client_id: clientId,
     response_type: 'code',
     redirect_uri: redirectUri,
     scope: 'timelog:write timelog:read',
-    state: generateRandomState(), // CSRF protection
+    state: generateRandomState(),
   });
 
   const authUrl = `${baseUrl}/oauth/authorize?${params.toString()}`;
@@ -90,12 +96,14 @@ export async function initiateBrowserOAuth(redirectUri: string): Promise<string>
  */
 export async function verifyManualAuthCode(authCode: string): Promise<OAuthVerifyResponse> {
   const baseUrl = await getApiBaseUrl();
+  const { clientId, clientSecret } = await getClientCredentials();
   const response = await fetch(`${baseUrl}/oauth/verify`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       code: authCode,
-      clientId: 'cetec-time-logger',
+      clientId,
+      ...(clientSecret && { clientSecret }),
     }),
   });
 
@@ -113,12 +121,14 @@ export async function verifyManualAuthCode(authCode: string): Promise<OAuthVerif
  */
 export async function refreshAccessToken(refreshToken: string): Promise<OAuthRefreshResponse> {
   const baseUrl = await getApiBaseUrl();
+  const { clientId, clientSecret } = await getClientCredentials();
   const response = await fetch(`${baseUrl}/oauth/refresh`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       refreshToken,
-      clientId: 'cetec-time-logger',
+      clientId,
+      ...(clientSecret && { clientSecret }),
     }),
   });
 
@@ -137,12 +147,14 @@ export async function refreshAccessToken(refreshToken: string): Promise<OAuthRef
 export async function revokeTokens(refreshToken: string): Promise<void> {
   try {
     const baseUrl = await getApiBaseUrl();
+    const { clientId, clientSecret } = await getClientCredentials();
     const response = await fetch(`${baseUrl}/oauth/revoke`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         refreshToken,
-        clientId: 'cetec-time-logger',
+        clientId,
+        ...(clientSecret && { clientSecret }),
       }),
     });
 

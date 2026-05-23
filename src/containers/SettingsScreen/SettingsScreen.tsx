@@ -49,6 +49,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ oauthDeepLinkDat
   const [isEditingUrl, setIsEditingUrl] = useState(false);
   const [tempUrl, setTempUrl] = useState('');
   const [selectedMethod, setSelectedMethod] = useState<'shortcode' | 'browser' | 'manual'>('shortcode');
+  const [clientId, setClientId] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
+  const [isEditingCredentials, setIsEditingCredentials] = useState(false);
+  const [tempClientId, setTempClientId] = useState('');
+  const [tempClientSecret, setTempClientSecret] = useState('');
 
   // Load connected state and CetecERP URL on mount
   useEffect(() => {
@@ -56,14 +61,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ oauthDeepLinkDat
       try {
         // Check for tokens in secure storage first
         const tokens = await tokenStorage.getTokens();
-        
+
         // Also check for refresh token in database (for manual entry stored keys)
         const refreshToken = await dbService.getSetting('refreshToken');
-        
+
         if (tokens || refreshToken) {
           setIsConnected(true);
           setConnectionAttempted(true); // Mark that we have an established connection
-          
+
           // Try to fetch and set the user name from the stored data
           const savedUser = await dbService.getSetting('connectedUser');
           if (savedUser) {
@@ -79,6 +84,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ oauthDeepLinkDat
           setCetecUrl(savedUrl);
           setTempUrl(savedUrl);
         }
+
+        // Load client credentials
+        const savedClientId = await cetecConfig.getClientId();
+        const savedClientSecret = await cetecConfig.getClientSecret();
+        if (savedClientId) setClientId(savedClientId);
+        if (savedClientSecret) setClientSecret(savedClientSecret);
       } catch (error) {
         console.error('Error loading initial state:', error);
       }
@@ -351,6 +362,25 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ oauthDeepLinkDat
     setIsEditingUrl(false);
   };
 
+  const handleSaveClientCredentials = async () => {
+    try {
+      await cetecConfig.saveClientId(tempClientId);
+      await cetecConfig.saveClientSecret(tempClientSecret);
+      setClientId(tempClientId);
+      setClientSecret(tempClientSecret);
+      setIsEditingCredentials(false);
+      Alert.alert('Success', 'Client credentials saved');
+    } catch (error) {
+      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to save credentials');
+    }
+  };
+
+  const handleCancelCredentialsEdit = () => {
+    setTempClientId(clientId);
+    setTempClientSecret(clientSecret);
+    setIsEditingCredentials(false);
+  };
+
   const handleCopyShortCode = async () => {
     if (authSession?.shortCode) {
       await Clipboard.setString(authSession.shortCode);
@@ -522,6 +552,187 @@ CetecERP URL Configuration
                     },
                   ]}
                   onPress={handleCancelUrlEdit}
+                >
+                  <Text style={[styles.buttonText, { color: isDark ? Colors.text : Colors.textDark }]}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* OAuth Client Credentials Section */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: isDark ? Colors.text : Colors.textDark }]}>
+            OAuth Client Credentials
+          </Text>
+
+          {!isEditingCredentials ? (
+            <View
+              style={[
+                styles.card,
+                { backgroundColor: isDark ? Colors.surfaceDark : Colors.surfaceLight },
+              ]}
+            >
+              {clientId ? (
+                <>
+                  <Text
+                    style={[
+                      styles.urlLabel,
+                      { color: isDark ? Colors.textSecondary : Colors.textTertiary },
+                    ]}
+                  >
+                    Client ID
+                  </Text>
+                  <Text
+                    style={[
+                      styles.urlValue,
+                      { color: isDark ? Colors.text : Colors.textDark },
+                    ]}
+                  >
+                    {clientId}
+                  </Text>
+                  {clientSecret ? (
+                    <>
+                      <Text
+                        style={[
+                          styles.urlLabel,
+                          { color: isDark ? Colors.textSecondary : Colors.textTertiary },
+                        ]}
+                      >
+                        Client Secret
+                      </Text>
+                      <Text
+                        style={[
+                          styles.urlValue,
+                          { color: isDark ? Colors.text : Colors.textDark },
+                        ]}
+                      >
+                        {'•'.repeat(Math.min(clientSecret.length, 24))}
+                      </Text>
+                    </>
+                  ) : null}
+                </>
+              ) : (
+                <Text
+                  style={[
+                    styles.cardDescription,
+                    { color: isDark ? Colors.textSecondary : Colors.textTertiary },
+                  ]}
+                >
+                  Optional. Enter your registered OAuth client ID and secret from CetecERP. If not set, a default client ID is used.
+                </Text>
+              )}
+
+              <TouchableOpacity
+                style={[styles.button, { backgroundColor: Colors.primary, marginTop: Spacing.md }]}
+                onPress={() => {
+                  setTempClientId(clientId);
+                  setTempClientSecret(clientSecret);
+                  setIsEditingCredentials(true);
+                }}
+              >
+                <Text style={[styles.buttonText, { color: Colors.text }]}>
+                  {clientId ? 'Edit Credentials' : 'Set Credentials'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View
+              style={[
+                styles.card,
+                { backgroundColor: isDark ? Colors.surfaceDark : Colors.surfaceLight },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.inputLabel,
+                  { color: isDark ? Colors.text : Colors.textDark },
+                ]}
+              >
+                Client ID
+              </Text>
+              <Text
+                style={[
+                  styles.inputHint,
+                  { color: isDark ? Colors.textSecondary : Colors.textTertiary },
+                ]}
+              >
+                The client ID registered in CetecERP for this app
+              </Text>
+              <TextInput
+                style={[
+                  styles.urlInput,
+                  {
+                    backgroundColor: isDark ? Colors.backgroundDark : Colors.backgroundLight,
+                    color: isDark ? Colors.text : Colors.textDark,
+                    borderColor: Colors.borderColor,
+                  },
+                ]}
+                placeholder="Enter Client ID"
+                placeholderTextColor={Colors.textSecondary}
+                value={tempClientId}
+                onChangeText={setTempClientId}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+
+              <Text
+                style={[
+                  styles.inputLabel,
+                  { color: isDark ? Colors.text : Colors.textDark, marginTop: Spacing.md },
+                ]}
+              >
+                Client Secret
+              </Text>
+              <Text
+                style={[
+                  styles.inputHint,
+                  { color: isDark ? Colors.textSecondary : Colors.textTertiary },
+                ]}
+              >
+                The client secret for your registered OAuth app
+              </Text>
+              <TextInput
+                style={[
+                  styles.urlInput,
+                  {
+                    backgroundColor: isDark ? Colors.backgroundDark : Colors.backgroundLight,
+                    color: isDark ? Colors.text : Colors.textDark,
+                    borderColor: Colors.borderColor,
+                  },
+                ]}
+                placeholder="Enter Client Secret"
+                placeholderTextColor={Colors.textSecondary}
+                value={tempClientSecret}
+                onChangeText={setTempClientSecret}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+              />
+
+              <View style={styles.buttonRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.halfButton,
+                    { backgroundColor: Colors.primary, marginRight: Spacing.sm },
+                  ]}
+                  onPress={handleSaveClientCredentials}
+                >
+                  <Text style={[styles.buttonText, { color: Colors.text }]}>Save</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.halfButton,
+                    {
+                      backgroundColor: isDark ? Colors.surfaceDark : Colors.backgroundLight,
+                      borderWidth: 1,
+                      borderColor: Colors.borderColor,
+                    },
+                  ]}
+                  onPress={handleCancelCredentialsEdit}
                 >
                   <Text style={[styles.buttonText, { color: isDark ? Colors.text : Colors.textDark }]}>
                     Cancel
