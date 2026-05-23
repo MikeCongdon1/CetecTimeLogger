@@ -9,6 +9,11 @@ export interface TokenData {
   tokenType: string; // Usually 'Bearer'
 }
 
+export interface ClientCredentials {
+  clientId: string;
+  clientSecret?: string;
+}
+
 export interface OAuthInitiateResponse {
   shortCode: string;
   deepLink: string;

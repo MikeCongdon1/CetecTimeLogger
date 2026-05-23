@@ -1,7 +1,7 @@
 /**
  * CetecERP Instance Configuration Storage
- * Stores the user's CetecERP server URL
- * 
+ * Stores the user's CetecERP server URL and OAuth client credentials
+ *
  * On React Native: Uses AsyncStorage
  * On Web: Uses localStorage
  */
@@ -9,6 +9,8 @@
 import { Platform } from 'react-native';
 
 const CETEC_URL_KEY = 'cetec_instance_url';
+const CETEC_CLIENT_ID_KEY = 'cetec_client_id';
+const CETEC_CLIENT_SECRET_KEY = 'cetec_client_secret';
 
 /**
  * Get storage implementation based on platform
@@ -104,4 +106,38 @@ export async function clearCetecUrl(): Promise<void> {
 export async function isCetecUrlConfigured(): Promise<boolean> {
   const url = await getCetecUrl();
   return !!url;
+}
+
+export async function saveClientId(clientId: string): Promise<void> {
+  const storage = await getStorageImpl();
+  await storage.setItem(CETEC_CLIENT_ID_KEY, clientId.trim());
+}
+
+export async function getClientId(): Promise<string | null> {
+  try {
+    const storage = await getStorageImpl();
+    return await storage.getItem(CETEC_CLIENT_ID_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export async function saveClientSecret(clientSecret: string): Promise<void> {
+  const storage = await getStorageImpl();
+  await storage.setItem(CETEC_CLIENT_SECRET_KEY, clientSecret.trim());
+}
+
+export async function getClientSecret(): Promise<string | null> {
+  try {
+    const storage = await getStorageImpl();
+    return await storage.getItem(CETEC_CLIENT_SECRET_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export async function clearClientCredentials(): Promise<void> {
+  const storage = await getStorageImpl();
+  await storage.removeItem(CETEC_CLIENT_ID_KEY);
+  await storage.removeItem(CETEC_CLIENT_SECRET_KEY);
 }
