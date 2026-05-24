@@ -17,8 +17,12 @@ import { Footer } from './src/components';
 import { Colors, Icons } from './src/theme';
 import { Order, CommentContextData } from './src/types';
 import { SegmentData } from './src/containers/NewSegmentScreen/NewSegmentScreen';
+import dbService from './src/utils/database';
 
 type Screen = 'orders' | 'history' | 'settings';
+
+const RECENTLY_LOGGED_KEY = 'recentlyLoggedOrders';
+const MAX_RECENT = 8;
 
 interface OAuthDeepLinkData {
   shortCode: string;
@@ -31,35 +35,48 @@ function App() {
   const [showCommentEditor, setShowCommentEditor] = useState(false);
   const [showNewSegment, setShowNewSegment] = useState(false);
   const [oauthDeepLinkData, setOAuthDeepLinkData] = useState<OAuthDeepLinkData | null>(null);
+  const [recentlyLogged, setRecentlyLogged] = useState<Order[]>([]);
+
+  // Load recently logged from IndexedDB on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const stored = await dbService.getSetting(RECENTLY_LOGGED_KEY);
+        if (stored) {
+          setRecentlyLogged(JSON.parse(stored));
+        }
+      } catch {
+        // ignore parse errors
+      }
+    })();
+  }, []);
+
+  const addToRecentlyLogged = async (order: Order) => {
+    setRecentlyLogged(prev => {
+      // Dedupe by id, put newest first, cap at MAX_RECENT
+      const filtered = prev.filter(o => o.id !== order.id);
+      const updated = [order, ...filtered].slice(0, MAX_RECENT);
+      dbService.setSetting(RECENTLY_LOGGED_KEY, JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
+  };
 
   // Handle deep links from CetecERP OAuth flow
   useEffect(() => {
     const handleDeepLink = async ({ url }: { url: string }) => {
-      // Parse deep link: cetec://oauth/ABC123DEF456
       const match = url.match(/cetec:\/\/oauth\/(.+)/);
       if (match) {
-        const shortCode = match[1];
-        console.log('OAuth deep link received:', shortCode);
-        
-        // Store the code and navigate to settings
-        setOAuthDeepLinkData({ shortCode });
+        setOAuthDeepLinkData({ shortCode: match[1] });
         setCurrentScreen('settings');
       }
     };
 
-    // Handle initial URL (app opened via deep link)
     Linking.getInitialURL().then((url) => {
-      if (url != null) {
-        handleDeepLink({ url });
-      }
+      if (url != null) handleDeepLink({ url });
     });
 
-    // Listen for URL changes while app is open
     const subscription = Linking.addEventListener('url', handleDeepLink);
-
-    return () => {
-      subscription.remove();
-    };
+    return () => subscription.remove();
   }, []);
 
   const handleOrderPress = (order: Order) => {
@@ -68,8 +85,10 @@ function App() {
   };
 
   const handleCommentSave = (comment: string, tags: string[]) => {
-    // TODO: Save comment to API/context
-    console.log('Comment saved:', { comment, tags });
+    // selectedOrder is still set here — persist it as recently logged
+    if (selectedOrder) {
+      addToRecentlyLogged(selectedOrder);
+    }
     setShowCommentEditor(false);
     setSelectedOrder(null);
   };
@@ -84,7 +103,6 @@ function App() {
   };
 
   const handleSegmentSave = (segmentData: SegmentData) => {
-    // TODO: Save segment to API/context
     console.log('Segment saved:', segmentData);
     setShowNewSegment(false);
   };
@@ -93,21 +111,12 @@ function App() {
     setShowNewSegment(false);
   };
 
-  const handleTimerPause = () => {
-    console.log('Timer paused');
-    // TODO: Pause active timer
-  };
-
   const commentContextData: CommentContextData | null = selectedOrder
     ? {
         orderId: selectedOrder.id,
         orderNumber: selectedOrder.orderNumber,
         title: selectedOrder.clientName,
-        elapsedTime: selectedOrder.elapsedTime || {
-          hours: 0,
-          minutes: 0,
-          seconds: 0,
-        },
+        elapsedTime: selectedOrder.elapsedTime || { hours: 0, minutes: 0, seconds: 0 },
       }
     : null;
 
@@ -118,7 +127,8 @@ function App() {
           <OrdersScreen
             onOrderPress={handleOrderPress}
             onCreateOrderPress={handleCreateOrder}
-            onTimerPausePress={handleTimerPause}
+            onTimerPausePress={() => {}}
+            recentlyLogged={recentlyLogged}
           />
         );
       case 'history':
@@ -130,7 +140,8 @@ function App() {
           <OrdersScreen
             onOrderPress={handleOrderPress}
             onCreateOrderPress={handleCreateOrder}
-            onTimerPausePress={handleTimerPause}
+            onTimerPausePress={() => {}}
+            recentlyLogged={recentlyLogged}
           />
         );
     }
@@ -142,16 +153,12 @@ function App() {
         style={[
           styles.container,
           {
-            backgroundColor: isDarkMode
-              ? Colors.backgroundDark
-              : Colors.backgroundLight,
+            backgroundColor: isDarkMode ? Colors.backgroundDark : Colors.backgroundLight,
           },
         ]}
       >
-        {/* Main Screen Content */}
         <View style={styles.screenContainer}>{renderScreen()}</View>
 
-        {/* Footer Navigation */}
         <Footer
           currentScreen={currentScreen}
           onNavigate={setCurrentScreen}
@@ -159,15 +166,17 @@ function App() {
         />
       </View>
 
-      {/* Comment Editor Modal */}
+      {/* Log Time Modal */}
       <Modal
         visible={showCommentEditor}
         animationType="slide"
         onRequestClose={handleCloseCommentEditor}
       >
-        {commentContextData && (
+        {commentContextData && selectedOrder && (
           <CommentEditorScreen
             contextData={commentContextData}
+            ordlineId={parseInt(selectedOrder.id, 10)}
+            assignedUserId={0}
             onSavePress={handleCommentSave}
             onClosePress={handleCloseCommentEditor}
           />
