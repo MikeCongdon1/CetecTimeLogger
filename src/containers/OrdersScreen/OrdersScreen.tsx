@@ -10,14 +10,13 @@ import {
   Alert,
   AppState,
   TouchableOpacity,
-  TextInput,
 } from 'react-native';
 import {
   OrderCard,
-  IconButton,
+  SmartOmniBar,
 } from '../../components';
 import { Order, OrderStatus } from '../../types';
-import { Colors, Spacing, Typography, Icons } from '../../theme';
+import { Colors, Spacing, Typography } from '../../theme';
 import * as tokenStorage from '../../utils/tokenStorage';
 import dbService from '../../utils/database';
 
@@ -69,12 +68,6 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [userId, setUserId] = useState<number | null>(null);
-
-  // Search state
-  const [isSearchMode, setIsSearchMode] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Order[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
 
   const fetchOrders = useCallback(async () => {
     try {
@@ -182,76 +175,11 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
     return () => subscription?.remove?.();
   }, [fetchOrders]);
 
-  const handleSearch = useCallback(async (query: string) => {
-    setSearchQuery(query);
-
-    if (!query.trim()) {
-      setSearchResults([]);
-      return;
-    }
-
-    try {
-      setIsSearching(true);
-
-      let authToken = '';
-      const tokens = await tokenStorage.getTokens();
-      if (tokens?.accessToken) {
-        authToken = tokens.accessToken;
-      } else {
-        const refreshToken = await dbService.getSetting('refreshToken');
-        if (!refreshToken) { setIsSearching(false); return; }
-        authToken = refreshToken;
-      }
-
-      const cetecUrl = await dbService.getSetting('cetecUrl');
-      if (!cetecUrl) { setIsSearching(false); return; }
-
-      const searchUrl = new URL(`${cetecUrl}/goapis/api/v1/global_search`);
-      searchUrl.searchParams.append('value', query);
-
-      const response = await fetch(searchUrl.toString(), {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
-      });
-
-      if (!response.ok) throw new Error(`Search failed: ${response.status}`);
-
-      const searchData = await response.json();
-
-      const results: Order[] = (searchData.results || searchData.data || [])
-        .filter((r: any) => r.object_type === 'Ordline')
-        .map((r: any) => ({
-          id: r.object_id?.toString() || r.id,
-          orderNumber: `${r.object_name} (${r.object_id})`,
-          clientName: r.object_desc || r.object || r.name,
-          service: r.comments || r.description || 'Work Order',
-          location: r.object_notes || '',
-          status: 'pending' as OrderStatus,
-        }));
-
-      setSearchResults(results);
-    } catch (error) {
-      setSearchResults([]);
-    } finally {
-      setIsSearching(false);
-    }
-  }, []);
-
-  const exitSearch = () => {
-    setIsSearchMode(false);
-    setSearchQuery('');
-    setSearchResults([]);
-  };
 
   // Split orders: in-progress first, then pending, exclude completed from primary view
   const inProgressOrders = orders.filter(o => o.status === 'in_progress');
   const pendingOrders = orders.filter(o => o.status === 'pending');
   const myTaskOrders = [...inProgressOrders, ...pendingOrders];
-
-  // Recently logged items not already in myTaskOrders
-  const recentNotInTasks = recentlyLogged.filter(
-    r => !myTaskOrders.some(o => o.id === r.id)
-  );
 
   const bg = isDark ? Colors.backgroundDark : Colors.backgroundLight;
   const surface = isDark ? Colors.surfaceDark : Colors.surfaceLight;
@@ -263,42 +191,23 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
     <SafeAreaView style={[styles.container, { backgroundColor: bg }]}>
       {/* Header */}
       <View style={[styles.header, { backgroundColor: bg, borderBottomColor: border }]}>
-        {isSearchMode ? (
-          // Search mode header
-          <View style={styles.searchHeader}>
-            <TextInput
-              style={[styles.searchInput, { color: textPrimary, backgroundColor: surface, borderColor: border }]}
-              placeholder="Search orders..."
-              placeholderTextColor={textMuted}
-              value={searchQuery}
-              onChangeText={handleSearch}
-              autoFocus
-              returnKeyType="search"
-            />
-            <TouchableOpacity style={styles.cancelSearch} onPress={exitSearch}>
-              <Text style={[styles.cancelSearchText, { color: Colors.primary }]}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          // Normal header
-          <View style={styles.normalHeader}>
-            <Text style={[styles.headerTitle, { color: textPrimary }]}>Time Logger</Text>
-            <View style={styles.headerActions}>
-              <TouchableOpacity
-                style={[styles.refreshButton, { borderColor: border }]}
-                onPress={fetchOrders}
-              >
-                <Text style={[styles.refreshIcon, { color: textMuted }]}>↺</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.searchButton, { backgroundColor: surface, borderColor: border }]}
-                onPress={() => setIsSearchMode(true)}
-              >
-                <Text style={[styles.searchIcon, { color: textMuted }]}>🔍</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
+        <View style={styles.normalHeader}>
+          <Text style={[styles.headerTitle, { color: textPrimary }]}>Time Logger</Text>
+          <TouchableOpacity
+            style={[styles.refreshButton, { borderColor: border }]}
+            onPress={fetchOrders}
+          >
+            <Text style={[styles.refreshIcon, { color: textMuted }]}>↺</Text>
+          </TouchableOpacity>
+        </View>
+        <SmartOmniBar
+          orders={orders}
+          recentlyLogged={recentlyLogged}
+          onOrderSelect={(order, workType, durationHours) => {
+            onOrderPress?.(order);
+          }}
+          isDark={isDark}
+        />
       </View>
 
       <ScrollView
@@ -306,39 +215,7 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.contentContainer}
       >
-        {isSearchMode ? (
-          // ── SEARCH RESULTS ──
-          <View style={styles.section}>
-            {isSearching ? (
-              <View style={styles.centerState}>
-                <ActivityIndicator size="large" color={Colors.primary} />
-                <Text style={[styles.stateText, { color: textMuted, marginTop: Spacing.md }]}>Searching...</Text>
-              </View>
-            ) : !searchQuery.trim() ? (
-              <View style={styles.centerState}>
-                <Text style={[styles.stateText, { color: textMuted }]}>Type to search orders</Text>
-              </View>
-            ) : searchResults.length === 0 ? (
-              <View style={styles.centerState}>
-                <Text style={[styles.stateText, { color: textMuted }]}>No results for "{searchQuery}"</Text>
-              </View>
-            ) : (
-              <>
-                <Text style={[styles.sectionTitle, { color: textMuted }]}>
-                  {searchResults.length} result{searchResults.length !== 1 ? 's' : ''}
-                </Text>
-                {searchResults.map(order => (
-                  <OrderCard
-                    key={order.id}
-                    order={order}
-                    onPress={() => onOrderPress?.(order)}
-                    onActionPress={() => onOrderPress?.(order)}
-                  />
-                ))}
-              </>
-            )}
-          </View>
-        ) : isLoading ? (
+        {isLoading ? (
           <View style={styles.centerState}>
             <ActivityIndicator size="large" color={Colors.primary} />
             <Text style={[styles.stateText, { color: textMuted, marginTop: Spacing.md }]}>Loading tasks...</Text>
@@ -379,7 +256,7 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
                     No tasks assigned to you
                   </Text>
                   <Text style={[styles.emptyCardSub, { color: textMuted }]}>
-                    Use the search icon to find other orders
+                    Use the search bar above to find orders
                   </Text>
                 </View>
               ) : (
@@ -463,15 +340,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: Spacing.xs,
+    marginBottom: Spacing.sm,
   },
   headerTitle: {
     ...Typography.headlineSmall,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
   },
   refreshButton: {
     width: 34,
@@ -484,39 +356,6 @@ const styles = StyleSheet.create({
   refreshIcon: {
     fontSize: 18,
     fontWeight: '700',
-  },
-  searchButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  searchIcon: {
-    fontSize: 16,
-  },
-  // Search header
-  searchHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    paddingVertical: Spacing.xs,
-  },
-  searchInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    ...Typography.bodyMedium,
-  },
-  cancelSearch: {
-    paddingHorizontal: Spacing.xs,
-  },
-  cancelSearchText: {
-    ...Typography.titleSmall,
-    fontWeight: '600',
   },
   content: { flex: 1 },
   contentContainer: {
