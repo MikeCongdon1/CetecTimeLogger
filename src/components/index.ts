@@ -1,4 +1,5 @@
 export { Badge } from './Badge';
+export { SmartOmniBar } from './SmartOmniBar';
 export { SearchBar } from './SearchBar';
 export { TimerDisplay } from './TimerDisplay';
 export { IconButton } from './IconButton';
