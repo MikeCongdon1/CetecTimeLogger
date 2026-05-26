@@ -969,6 +969,18 @@ CetecERP URL Configuration
               >
                 Your key is authenticated and ready. Time entries will sync automatically.
               </Text>
+
+              <TouchableOpacity
+                style={[
+                  styles.secondaryButton,
+                  { borderColor: '#ef4444', marginTop: Spacing.lg },
+                ]}
+                onPress={handleDisconnect}
+              >
+                <Text style={[styles.secondaryButtonText, { color: '#ef4444' }]}>
+                  Disconnect
+                </Text>
+              </TouchableOpacity>
             </View>
           ) : (
             /* OAuth Session Active */
